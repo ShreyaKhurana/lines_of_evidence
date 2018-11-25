@@ -50,7 +50,7 @@ coords <- rbind(coord.m, coord.g, coord.p)
 # Check any common coordinates
 # dim(coords)
 # dim(unique(coords))
-xx <- rbind(x.m, x.g, x.p)
+# xx <- rbind(x.m, x.g, x.p)
 # x.m <- matrix(0, nrow = n, ncol = 1)
 
 # x.m[1:n.m] =
@@ -66,7 +66,7 @@ P[, (n.m+n.g+1):n] <- diag(n.p)
 
 
 # Initial values
-tt <- 2
+tt <- 1000
 tau <- 25
 a <- 1
 b <- 5
@@ -116,13 +116,13 @@ mu[1] <- rnorm(1, 0, w)
 x <- matrix(0, nrow = n, ncol = tt)
 
 phi[1] <-  runif(1, A, B)
-aa = 0.826
+corr = 0.826
 # Some helper functions
 x.dist <- as.matrix(dist(coords))
 minx = min(x.dist)
 rangex = diff(range(x.dist))
 x.dist <- apply(x.dist, MARGIN = 1, FUN = function(X) (X - minx)/rangex)
-V <- function(phi) {return(exp(-x.dist/phi) + aa*diag(1065))}
+V <- function(phi) {return(exp(-x.dist/phi) + corr*diag(1065))}
 Sigma.inv <- function(sigma.2, V) {return(sigma.2*solve(V))}
 
 phi_target <- function(phi0, sigma2, x1, mu0){
@@ -147,11 +147,15 @@ makeSymm <- function(m) {
 
 MH <- function(old, sigma2, x1, mu0) {
   proposed <-  old + rnorm(1, mean=0, sd=phi_sd)
+  if ((proposed < A) | (proposed > B)){
+    return(old)
+  }
   print(proposed)
   a = -1/(2*sigma2) * (t(x1 - mu0) %*% solve(V(proposed), (x1 - mu0)))
   b = -1/(2*sigma2) * (t(x1 - mu0) %*% solve(V(old), x1 - mu0))
   ratio <- min(1, sqrt(det(V(old)) / det(V(proposed))) * exp(a-b))
-  if(runif(1) <= ratio) { return(proposed) }
+
+  if((runif(1) <= ratio)) { return(proposed) }
   return(old)
 }
 
@@ -165,11 +169,11 @@ for (i in 2:tt) {
 
   mu.tilda <- mu[i-1]*rowSums(sinv) + mm + gg + pp
 
-  mm <- beta1[i-1]/sigma2.m[i-1] * (t(M) %*% M)
-  gg <- alpha1[i-1]/sigma2.g[i-1] * (t(G) %*% G)
-  pp <- gamma1[i-1]/sigma2.p[i-1] * (t(P) %*% P)
+  mm <- beta1[i-1]^2/sigma2.m[i-1] * (t(M) %*% M)
+  gg <- alpha1[i-1]^2/sigma2.g[i-1] * (t(G) %*% G)
+  pp <- gamma1[i-1]^2/sigma2.p[i-1] * (t(P) %*% P)
 
-  Sigma.tilda <- makeSymm(solve(sinv + mm + gg + pp))
+  Sigma.tilda <- makeSymm(solve(sinv + mm + gg + pp, tol = 1e-30))
 
   # Sample x
   x[,i] <- mvrnorm(mu = Sigma.tilda %*% mu.tilda, Sigma = Sigma.tilda)
@@ -179,7 +183,7 @@ for (i in 2:tt) {
   mu[i,] <- rnorm(1, (rep(1,n) %*% sinv %*% x[,i]) / k, sqrt(1/k))
 
   # Sample sigma.2
-  bb <- 0.5*t(x[,i] - mu[i,]) %*% solve(V(phi[i-1])) %*% (x[,i] - mu[i,]) + b
+  bb <- 0.5*t(x[,i] - mu[i,]) %*% solve(V(phi[i-1]), (x[,i] - mu[i,])) + b
   sigma.2[i,] <- 1/rgamma(1, shape = n/2 + a, scale = bb)
 
   # Sample sigma2.m, sigma2.g, sigma2.p
@@ -240,5 +244,15 @@ for (i in 2:tt) {
   gamma0[i] <- rnorm(1, mean = mn/rho.k, sd = 1/sqrt(rho.k))
 
   # Sample phi by Metropolis Hastings
-  phi[i] <- MH(phi[i-1], sigma.2[i], x[,i], mu[i], phi_sd)
+  phi[i] <- MH(phi[i-1], sigma.2[i], x[,i], mu[i])
+  print(i)
 }
+
+tt <- 1000
+# Burn in percentage
+burn_in = 0.5
+x.final = apply(x[,(ceiling(burn_in*tt)+1):tt], MARGIN = 1, FUN=mean)
+prob.map = pnorm(x.final)
+hist(prob.map, i)
+cr <- colorRamp(c("yellow", "black"))
+plot(coords[,1], coords[,2], col=rgb(cr(prob.map / max(prob.map)), max=255), xlab="lat", ylab="lon", main="Probability map of Fructiosa ")

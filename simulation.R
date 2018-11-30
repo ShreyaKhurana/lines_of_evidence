@@ -5,9 +5,12 @@ library(MASS)
 # Load genetic data
 gen.data <- data.frame(readxl::read_excel("~/Data for alnus integrative model/Genetic_Data_For_Integrative_Model.xlsx"))
 coord.g <- subset(gen.data, select=c(lat, long))
-x.g <- qnorm(pmax(gen.data$Cluster.1, gen.data$Cluster.2))
+# x.g <- qnorm(pmax(gen.data$Cluster.1, gen.data$Cluster.2))
 # x.g <- scale(subset(gen.data, select=max(c(Cluster.1, Cluster.2))))
-n.g <- nrow(gen.data)
+n.g <- 47
+set.seed(2)
+x.g <- rnorm(n.g)
+# n.g <- nrow(gen.data)
 colnames(coord.g) <- c('lat', 'lon')
 # colnames(x.g) <- c('pr')
 
@@ -15,18 +18,20 @@ colnames(coord.g) <- c('lat', 'lon')
 r <- raster("~/Data for alnus integrative model/FRU_lgmEM.asc.txt")
 r.pts <- rasterToPoints(r, spatial = TRUE)
 r.df <- data.frame(r.pts)
-n.m <- nrow(r.df)
-r.df['scaled'] <- (r.df$FRU_lgmEM.asc - min(r.df$FRU_lgmEM.asc))/(diff(range(r.df$FRU_lgmEM.asc)))
-r.df$scaled <- qnorm(r.df$scaled)
+# n.m <- nrow(r.df)
+n.m <- 500
+# r.df['scaled'] <- (r.df$FRU_lgmEM.asc - min(r.df$FRU_lgmEM.asc))/(diff(range(r.df$FRU_lgmEM.asc)))
+# r.df$scaled <- qnorm(r.df$scaled)
+
 # Choose k rows
-k <- 1000
-set.seed(1)
-r.df <- r.df[sample(nrow(r.df), k), ]
+# k <- 1000
+set.seed(3)
+r.df <- r.df[sample(nrow(r.df), n.m), ]
 
 coord.m <- subset(r.df, select=c(y,x))
-
-x.m <- r.df$scaled
-n.m <- nrow(r.df)
+x.m <- rnorm(n.m)
+# x.m <- r.df$scaled
+# n.m <- nrow(r.df)
 colnames(coord.m) <- c('lat', 'lon')
 # colnames(x.m) <- c('pr')
 # r.pts
@@ -36,16 +41,17 @@ colnames(coord.m) <- c('lat', 'lon')
 
 plot(r)
 
-# Load Pollen data
+# # Load Pollen data
 pol.data <- data.frame(readxl::read_excel('./Pollen_Data_For_Inegrative_Model_v2.xlsx'))
 pol.data <- subset(pol.data, Pollen.Data != 0)
 coord.p <- subset(pol.data, select=c(Latitude, Longitude))
-x.p <- qnorm(pol.data$Pollen.Data)
+# x.p <- qnorm(pol.data$Pollen.Data)
 # x.p <- as.matrix(x.p)
-n.p <- nrow(pol.data)
+# n.p <- nrow(pol.data)
+n.p <- 14
 colnames(coord.p) <- c('lat', 'lon')
 # colnames(x.p) <- c('pr')
-
+x.p <- rnorm(n.p)
 # Union of all coordinates
 n <- n.p + n.m + n.g
 coords <- rbind(coord.m, coord.g, coord.p)
@@ -68,13 +74,13 @@ P[, (n.m+n.g+1):n] <- diag(n.p)
 
 
 # Initial values
-tt <- 10000
+tt <- 1000
 tau <- 0.5
 a <- 1
 b <- 5
 w <- 4
-A <- 0.2
-B <- 0.3
+A <- 0.1
+B <- 5
 phi_sd <- 0.2
 
 init0 <- rnorm(3, 0, sd=sqrt(tau))
@@ -128,12 +134,12 @@ x.dist <- apply(x.dist, MARGIN = 1, FUN = function(X) (X - minx)/rangex)
 V <- function(phi) {return(exp(-x.dist/phi) + corr*diag(n))}
 Sigma.inv <- function(sigma.2, V) {return(solve(sigma.2*V))}
 
-# phi_target <- function(phi0, sigma2, x1, mu0){
-#   if (phi0 >= A && phi0 <= B){
-#     return((det(V(phi0))^-0.5) * exp(1/(2*sigma2) * (t(x1 - mu0) %*% solve(V(phi0)) %*% (x1 - mu0))))
-#   }
-#   return(0)
-# }
+phi_target <- function(phi0, sigma2, x1, mu0){
+  if (phi0 >= A && phi0 <= B){
+    return((det(V(phi0))^-0.5) * exp(1/(2*sigma2) * (t(x1 - mu0) %*% solve(V(phi0)) %*% (x1 - mu0))))
+  }
+  return(0)
+}
 
 makeSymm <- function(m) {
   m[upper.tri(m)] <- t(m)[upper.tri(m)]
@@ -148,7 +154,6 @@ makeSymm <- function(m) {
 #   return(old)
 # }
 
-# Random-walk metropolis hastings
 MH <- function(old, sigma2, x1, mu0) {
   proposed <-  old + rnorm(1, mean=0, sd=phi_sd)
   if ((proposed < A) | (proposed > B)){
@@ -184,7 +189,7 @@ for (i in 2:1000) {
   # print(x[1:5,i])
   # Sample mu
   # k <- n/sigma.2[i-1] + 1/w
-  k <- sum(sinv) + 1/w
+  k <- rep(1,n) %*% sinv %*% matrix(rep(1,n), nrow = n, ncol = 1) + 1/w
   mu[i,] <- rnorm(1, (rep(1,n) %*% sinv %*% x[,i])/k, sqrt(1/k))
   # print(mu[i])
   # Sample sigma.2
@@ -265,8 +270,6 @@ cr <- colorRamp(c("yellow", "black"))
 plot(coords[,1], coords[,2], col=rgb(cr(prob.map / max(prob.map)), max=255), xlab="lat", ylab="lon", main="Probability map of Fructiosa")
 
 
-
-
 tt <- 1000
 # Burn in percentage
 burn_in = 0.5
@@ -277,4 +280,4 @@ cr <- colorRamp(c("yellow", "black"))
 plot(coords[,1], coords[,2], col=rgb(cr(prob.map / max(prob.map)), max=255), xlab="lat", ylab="lon", main="Probability map of Fructiosa ")
 
 
-plot(beta1[1:tt])
+plot(alpha1[1:tt])

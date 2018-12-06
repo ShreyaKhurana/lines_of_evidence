@@ -7,9 +7,12 @@ gen.data <- data.frame(readxl::read_excel("~/Data for alnus integrative model/Ge
 coord.g <- subset(gen.data, select=c(lat, long))
 # x.g <- qnorm(pmax(gen.data$Cluster.1, gen.data$Cluster.2))
 # x.g <- scale(subset(gen.data, select=max(c(Cluster.1, Cluster.2))))
+
+
+
 n.g <- 47
 set.seed(2)
-x.g <- rnorm(n.g)
+# x.g <-
 # n.g <- nrow(gen.data)
 colnames(coord.g) <- c('lat', 'lon')
 # colnames(x.g) <- c('pr')
@@ -29,7 +32,7 @@ set.seed(3)
 r.df <- r.df[sample(nrow(r.df), n.m), ]
 
 coord.m <- subset(r.df, select=c(y,x))
-x.m <- rnorm(n.m)
+# x.m <- rnorm(n.m)
 # x.m <- r.df$scaled
 # n.m <- nrow(r.df)
 colnames(coord.m) <- c('lat', 'lon')
@@ -39,7 +42,7 @@ colnames(coord.m) <- c('lat', 'lon')
 # nrow(fru.sdm.table)
 # ncol(fru.sdm.table)
 
-plot(r)
+# plot(r)
 
 # # Load Pollen data
 pol.data <- data.frame(readxl::read_excel('./Pollen_Data_For_Inegrative_Model_v2.xlsx'))
@@ -51,7 +54,7 @@ coord.p <- subset(pol.data, select=c(Latitude, Longitude))
 n.p <- 14
 colnames(coord.p) <- c('lat', 'lon')
 # colnames(x.p) <- c('pr')
-x.p <- rnorm(n.p)
+# x.p <- rnorm(n.p)
 # Union of all coordinates
 n <- n.p + n.m + n.g
 coords <- rbind(coord.m, coord.g, coord.p)
@@ -60,6 +63,8 @@ coords <- rbind(coord.m, coord.g, coord.p)
 # dim(unique(coords))
 # xx <- rbind(x.m, x.g, x.p)
 # x.m <- matrix(0, nrow = n, ncol = 1)
+
+
 
 # x.m[1:n.m] =
 # M, G, P matrices
@@ -119,8 +124,8 @@ sigma2.g[1] <- init.sigma2[2]
 sigma2.p[1] <- init.sigma2[3]
 sigma.2[1] <- init.sigma2[4]
 
-
-mu[1] <- rnorm(1, 0, w)
+# Mu is 0 now
+mu[1] <- 0
 
 x <- matrix(0, nrow = n, ncol = tt)
 
@@ -133,6 +138,25 @@ rangex = diff(range(x.dist))
 x.dist <- apply(x.dist, MARGIN = 1, FUN = function(X) (X - minx)/rangex)
 V <- function(phi) {return(exp(-x.dist/phi) + corr*diag(n))}
 Sigma.inv <- function(sigma.2, V) {return(solve(sigma.2*V))}
+
+# Simulate actual data here
+beta0.a <- 0
+beta1.a <- 1
+alpha0.a <- 0
+alpha1.a <- 1
+gamma0.a <- 0
+gamma1.a <- 1
+phi.a <- 0.25
+sigma2.a <- 0.28
+sigma2g.a <- 1/rgamma(1, shape=a, scale=b)
+sigma2m.a <- 1/rgamma(1, shape=a, scale=b)
+sigma2p.a <- 1/rgamma(1, shape=a, scale=b)
+
+x.a <- mvrnorm(mu = rep(0,n), Sigma = sigma2.a*exp(-x.dist/phi.a) )
+x.m <- beta0.a + beta1.a*x.a[1:n.m] + rnorm(n.m, mean = 0, sd = sqrt(sigma2m.a))
+x.g <- alpha0.a + alpha1.a*x.a[(n.m+1):(n.m+n.g)] + rnorm(n.g, mean = 0, sd = sqrt(sigma2g.a))
+x.p <- gamma0.a + gamma1.a*x.a[(n.m+n.g+1):n] + rnorm(n.p, mean = 0, sd = sqrt(sigma2p.a))
+
 
 phi_target <- function(phi0, sigma2, x1, mu0){
   if (phi0 >= A && phi0 <= B){
@@ -176,7 +200,7 @@ for (i in 2:1000) {
   pp <- gamma1[i-1]/sigma2.p[i-1] * t(P) %*% (x.p - gamma0[i-1])
   sinv <- Sigma.inv(sigma.2[i-1], V(phi[i-1]))
 
-  mu.tilda <- mu[i-1]*rowSums(sinv) + mm + gg + pp
+  mu.tilda <- mm + gg + pp
   # print(mu.tilda[1:10])
   mm <- beta1[i-1]^2/sigma2.m[i-1] * (t(M) %*% M)
   gg <- alpha1[i-1]^2/sigma2.g[i-1] * (t(G) %*% G)
@@ -190,10 +214,10 @@ for (i in 2:1000) {
   # Sample mu
   # k <- n/sigma.2[i-1] + 1/w
   k <- rep(1,n) %*% sinv %*% matrix(rep(1,n), nrow = n, ncol = 1) + 1/w
-  mu[i,] <- rnorm(1, (rep(1,n) %*% sinv %*% x[,i])/k, sqrt(1/k))
-  # print(mu[i])
+  mu[i,] <- 0
+  print(mu[i])
   # Sample sigma.2
-  bb <- 0.5*t(x[,i] - mu[i,]) %*% solve(V(phi[i-1]), (x[,i] - mu[i,])) + b
+  bb <- 0.5*t(x[,i]) %*% solve(V(phi[i-1]), (x[,i])) + b
   sigma.2[i,] <- 1/rgamma(1, shape = n/2 + a, scale = bb)
 
   # Sample sigma2.m, sigma2.g, sigma2.p
@@ -259,25 +283,6 @@ for (i in 2:1000) {
 }
 print(proc.time() - ptm)
 # See how the probability map progresses
-
-tt <- 1000
-# Burn in percentage
-burn_in = 0.5
-x.final = apply(x[,(ceiling(burn_in*tt)+1):tt], MARGIN = 1, FUN=mean)
-prob.map = pnorm(x.final)
-hist(prob.map, i)
-cr <- colorRamp(c("yellow", "black"))
-plot(coords[,1], coords[,2], col=rgb(cr(prob.map / max(prob.map)), max=255), xlab="lat", ylab="lon", main="Probability map of Fructiosa")
-
-
-tt <- 1000
-# Burn in percentage
-burn_in = 0.5
-x.final = apply(x[,(ceiling(burn_in*tt)+1):tt], MARGIN = 1, FUN=mean)
-prob.map = pnorm(x.final)
-hist(prob.map, i)
-cr <- colorRamp(c("yellow", "black"))
-plot(coords[,1], coords[,2], col=rgb(cr(prob.map / max(prob.map)), max=255), xlab="lat", ylab="lon", main="Probability map of Fructiosa ")
 
 
 plot(alpha1[1:tt])

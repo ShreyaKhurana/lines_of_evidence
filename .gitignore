@@ -3,4 +3,5 @@
 *.xlsx
 *.RData
 *.Rhistory
-Data for alnus integrative model/*
+Data*/
+Data*for*alnus*integrative*model/*
